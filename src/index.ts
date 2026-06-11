@@ -7,6 +7,7 @@ import { Lazy } from "./lazy.js";
 import { RotationMapper } from "./rotation.js";
 import { ServerClient } from "./server.js";
 import { HidStylus } from "./stylus.js";
+import { loadMouseSettings, AccelerationFilter } from "./acceleration.js";
 
 const address = process.argv[2] ?? "localhost:24800";
 const name = process.argv[3] ?? "Android";
@@ -40,6 +41,15 @@ const server = await ServerClient.start(
 const rotationMapper = new RotationMapper();
 const stylus = new HidStylus();
 const uHidStylus = await server.createUHidDevice(0, HidStylus.Descriptor);
+
+const mouseSettings = await loadMouseSettings();
+const accelFilter = new AccelerationFilter(mouseSettings);
+
+let lastX = 0;
+let lastY = 0;
+let virtualX = 0;
+let virtualY = 0;
+let isInitialized = false;
 
 let writeLock: Promise<void> = Promise.resolve();
 function safeWrite(report: Uint8Array): Promise<void> {
@@ -87,6 +97,12 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   console.log("[deskflow]", "server connected");
 
   client.onEnter(({ x, y }) => {
+    lastX = x;
+    lastY = y;
+    virtualX = x;
+    virtualY = y;
+    isInitialized = true;
+
     rotationMapper.setLogicalPosition(x, y);
 
     stylus!.enter();
@@ -96,13 +112,36 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   });
 
   client.onLeave(() => {
+    isInitialized = false;
     stylus!.leave();
     safeWrite(stylus!.report.slice());
   });
 
   client.onMouseMove(({ x, y }) => {
-    pendingX = x;
-    pendingY = y;
+    if (!isInitialized) {
+      lastX = x;
+      lastY = y;
+      virtualX = x;
+      virtualY = y;
+      isInitialized = true;
+    }
+
+    const rawDx = x - lastX;
+    const rawDy = y - lastY;
+    lastX = x;
+    lastY = y;
+
+    if (rawDx === 0 && rawDy === 0) {
+      return;
+    }
+
+    const { dx, dy } = accelFilter.apply(rawDx, rawDy);
+
+    virtualX = Math.max(0, Math.min(rotationMapper.logicalWidth, virtualX + dx));
+    virtualY = Math.max(0, Math.min(rotationMapper.logicalHeight, virtualY + dy));
+
+    pendingX = virtualX;
+    pendingY = virtualY;
     hasPendingMove = true;
     sendMouseMove();
   });
@@ -144,6 +183,8 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
   }
 
   stylus.setSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
+  virtualX = rotationMapper.x;
+  virtualY = rotationMapper.y;
   stylus.move(rotationMapper.x, rotationMapper.y);
 
   await safeWrite(stylus.report.slice());
