@@ -41,6 +41,38 @@ const rotationMapper = new RotationMapper();
 const stylus = new HidStylus();
 const uHidStylus = await server.createUHidDevice(0, HidStylus.Descriptor);
 
+let writeLock: Promise<void> = Promise.resolve();
+function safeWrite(report: Uint8Array): Promise<void> {
+  const serialized = writeLock.then(() => uHidStylus.write(report));
+  writeLock = serialized.catch(() => {});
+  return serialized;
+}
+
+let isWritingMove = false;
+let hasPendingMove = false;
+let pendingX = 0;
+let pendingY = 0;
+
+async function sendMouseMove() {
+  if (isWritingMove) {
+    return;
+  }
+  isWritingMove = true;
+  try {
+    while (hasPendingMove) {
+      const x = pendingX;
+      const y = pendingY;
+      hasPendingMove = false;
+
+      rotationMapper.setLogicalPosition(x, y);
+      stylus!.move(rotationMapper.x, rotationMapper.y);
+      await safeWrite(stylus!.report.slice());
+    }
+  } finally {
+    isWritingMove = false;
+  }
+}
+
 const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   const client = await InputLeapClient.connect(
     {
@@ -60,30 +92,29 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     stylus!.enter();
     stylus!.move(rotationMapper.x, rotationMapper.y);
 
-    uHidStylus.write(stylus!.report);
+    safeWrite(stylus!.report.slice());
   });
 
   client.onLeave(() => {
     stylus!.leave();
-    uHidStylus.write(stylus!.report);
+    safeWrite(stylus!.report.slice());
   });
 
   client.onMouseMove(({ x, y }) => {
-    rotationMapper.setLogicalPosition(x, y);
-
-    stylus!.move(rotationMapper.x, rotationMapper.y);
-
-    uHidStylus.write(stylus!.report);
+    pendingX = x;
+    pendingY = y;
+    hasPendingMove = true;
+    sendMouseMove();
   });
 
   client.onMouseDown((button) => {
     stylus!.buttonDown(button);
-    uHidStylus.write(stylus!.report);
+    safeWrite(stylus!.report.slice());
   });
 
   client.onMouseUp((button) => {
     stylus!.buttonUp(button);
-    uHidStylus.write(stylus!.report);
+    safeWrite(stylus!.report.slice());
   });
 
   client.onClipboard((content) => {
@@ -115,7 +146,7 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
   stylus.setSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
   stylus.move(rotationMapper.x, rotationMapper.y);
 
-  await uHidStylus.write(stylus.report);
+  await safeWrite(stylus.report.slice());
 });
 
 server.onClipboardChange(async (content) => {

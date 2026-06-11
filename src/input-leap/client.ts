@@ -78,10 +78,10 @@ async function readMessage(readable: BufferedReadableStream) {
 }
 
 function writeMessage(socket: TLSSocket, message: Uint8Array) {
-  const size = new Uint8Array(4);
-  setUint32BigEndian(size, 0, message.length);
-  socket.write(size);
-  socket.write(message);
+  const buffer = new Uint8Array(4 + message.length);
+  setUint32BigEndian(buffer, 0, message.length);
+  buffer.set(message, 4);
+  socket.write(buffer);
 }
 
 export class InputLeapClient {
@@ -104,6 +104,7 @@ export class InputLeapClient {
       key: server.key,
       cert: server.cert,
     });
+    socket.setNoDelay(true);
     await once(socket, "secureConnect");
 
     const serverCertificate = socket.getPeerCertificate();
