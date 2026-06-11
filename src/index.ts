@@ -112,7 +112,7 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
     );
   }
 
-  stylus.setSize(width, height);
+  stylus.setSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
   stylus.move(rotationMapper.x, rotationMapper.y);
 
   await uHidStylus.write(stylus.report);

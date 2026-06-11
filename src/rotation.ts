@@ -14,94 +14,42 @@ export class RotationMapper {
   logicalY: number = 0;
 
   setSize(width: number, height: number) {
-    this.x = (this.x / this.width) * width;
-    this.y = (this.y / this.height) * height;
+    const oldLogicalWidth = this.logicalWidth || width;
+    const oldLogicalHeight = this.logicalHeight || height;
 
     this.width = width;
     this.height = height;
 
-    switch (this.rotation) {
-      case 0:
-        this.logicalWidth = this.width;
-        this.logicalHeight = this.height;
-        this.logicalX = this.x;
-        this.logicalY = this.y;
-        break;
-      case 1:
-        this.logicalWidth = this.height;
-        this.logicalHeight = this.width;
-        this.logicalX = this.height - this.y;
-        this.logicalY = this.x;
-        break;
-      case 2:
-        this.logicalWidth = this.width;
-        this.logicalHeight = this.height;
-        this.logicalX = this.width - this.x;
-        this.logicalY = this.height - this.y;
-        break;
-      case 3:
-        this.logicalWidth = this.height;
-        this.logicalHeight = this.width;
-        this.logicalX = this.y;
-        this.logicalY = this.width - this.x;
-        break;
-    }
+    this.updateLogicalSize();
+
+    this.x = (this.x / oldLogicalWidth) * this.logicalWidth;
+    this.y = (this.y / oldLogicalHeight) * this.logicalHeight;
+    this.logicalX = this.x;
+    this.logicalY = this.y;
   }
 
   setRotation(rotation: number) {
     this.rotation = rotation;
+    this.updateLogicalSize();
+  }
 
-    switch (rotation) {
-      case 0:
-        this.logicalWidth = this.width;
-        this.logicalHeight = this.height;
-        this.logicalX = this.x;
-        this.logicalY = this.y;
-        break;
-      case 1:
-        this.logicalWidth = this.height;
-        this.logicalHeight = this.width;
-        this.logicalX = this.y;
-        this.logicalY = this.width - this.x;
-        break;
-      case 2:
-        this.logicalWidth = this.width;
-        this.logicalHeight = this.height;
-        this.logicalX = this.width - this.x;
-        this.logicalY = this.height - this.y;
-        break;
-      case 3:
-        this.logicalWidth = this.height;
-        this.logicalHeight = this.width;
-        this.logicalX = this.height - this.y;
-        this.logicalY = this.x;
-        break;
+  private updateLogicalSize() {
+    this.logicalX = this.x;
+    this.logicalY = this.y;
+
+    if (this.rotation === 1 || this.rotation === 3) {
+      this.logicalWidth = this.height;
+      this.logicalHeight = this.width;
+    } else {
+      this.logicalWidth = this.width;
+      this.logicalHeight = this.height;
     }
   }
 
   setLogicalPosition(x: number, y: number) {
-    // console.log("[rotation]", "logical position", x, y, this.rotation);
-
     this.logicalX = x;
     this.logicalY = y;
-
-    switch (this.rotation) {
-      case 0:
-        this.x = x;
-        this.y = y;
-        break;
-      case 1:
-        this.x = this.width - y;
-        this.y = x;
-        break;
-      case 2:
-        this.x = this.width - x;
-        this.y = this.height - y;
-        break;
-      case 3:
-        this.x = y;
-        this.y = this.height - x;
-        break;
-    }
+    this.x = x;
+    this.y = y;
   }
 }
