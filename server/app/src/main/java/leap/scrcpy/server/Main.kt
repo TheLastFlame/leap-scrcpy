@@ -129,7 +129,7 @@ object Main {
         Settings.System.putInt(FakeContext.contentResolver, "show_touches", 1)
 
         try {
-            val inputStream = DataInputStream(System.`in`)
+            val inputStream = DataInputStream(System.`in`.buffered())
             while (true) {
                 val type = inputStream.readInt()
                 when (type) {

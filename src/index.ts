@@ -51,12 +51,10 @@ let virtualX = 0;
 let virtualY = 0;
 let isInitialized = false;
 
-let writeLock: Promise<void> = Promise.resolve();
 function safeWrite(report: Uint8Array): Promise<void> {
-  const serialized = writeLock.then(() => uHidStylus.write(report));
-  writeLock = serialized.catch(() => {});
-  return serialized;
+  return uHidStylus.write(report).catch(() => {});
 }
+
 
 let isWritingMove = false;
 let hasPendingMove = false;
