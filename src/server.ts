@@ -9,6 +9,7 @@ import {
 } from "@yume-chan/stream-extra";
 import { buffer, s32, string, struct, StructInit } from "@yume-chan/struct";
 import { createReadStream } from "fs";
+import net from "node:net";
 import { UHidBus, UHidCreate2, UHidEventType, UHidInput2 } from "./uhid.js";
 import { union } from "./union.js";
 
@@ -124,13 +125,55 @@ export class ServerClient {
       "leap.scrcpy.server.Main",
     ]);
 
-    return new ServerClient(process);
+    // Give the Android server a brief moment to start
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    let controlSocket: net.Socket;
+    while (true) {
+      controlSocket = new net.Socket();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const onErr = (e: Error) => reject(e);
+          controlSocket.once("error", onErr);
+          controlSocket.connect(18402, "127.0.0.1", () => {
+            controlSocket.removeListener("error", onErr);
+            resolve();
+          });
+        });
+
+        // ADB will accept the connection locally even if the Android app isn't listening,
+        // but it will immediately close the socket. We wait a tiny bit to see if it closes.
+        await new Promise<void>((resolve, reject) => {
+          const onClose = () => reject(new Error("Socket closed immediately by ADB"));
+          controlSocket.once("close", onClose);
+          setTimeout(() => {
+            controlSocket.removeListener("close", onClose);
+            resolve();
+          }, 50);
+        });
+
+        break; // Successfully connected and stayed open!
+      } catch (e) {
+        controlSocket.destroy();
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    controlSocket.setNoDelay(true);
+
+    return new ServerClient(process, controlSocket);
   }
 
   #process: AdbNoneProtocolProcess;
   #writer: WritableStreamDefaultWriter<MaybeConsumable<Uint8Array>>;
 
   #ready = false;
+
+  #displayInfo?: { width: number; height: number; rotation: number; };
+  get displayInfo() {
+    return this.#displayInfo;
+  }
 
   #onDisplayChange = new EventEmitter<{
     width: number;
@@ -146,54 +189,69 @@ export class ServerClient {
     return this.#onClipboardChange.event;
   }
 
-  constructor(process: AdbNoneProtocolProcess) {
+  constructor(process: AdbNoneProtocolProcess, controlSocket: net.Socket) {
     this.#process = process;
-    this.#writer = process.stdin.getWriter();
+    
+    const writeToSocket = new WritableStream<MaybeConsumable<Uint8Array>>({
+      write: (chunk) => {
+        return new Promise<void>((resolve, reject) => {
+          const buffer = chunk instanceof Uint8Array ? chunk : chunk.value;
+          controlSocket.write(buffer, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
+    });
+    this.#writer = writeToSocket.getWriter();
 
+    const handleMessage = ({ value: message }: any) => {
+      console.log(`[server] Received raw message type: ${message.type}`);
+      switch (message.type) {
+        case MessageId.Version:
+          if (this.#ready) {
+            throw new Error("Invalid protocol data");
+          }
+          if (message.major > 1) {
+            throw new Error("Incompatible version");
+          }
+          this.#ready = true;
+          break;
+        case MessageId.DisplayInfo:
+          if (!this.#ready) {
+            throw new Error("Invalid protocol data");
+          }
+          this.#displayInfo = message;
+          this.#onDisplayChange.fire(message);
+          break;
+        case MessageId.ClipboardChange:
+          if (!this.#ready) {
+            throw new Error("Invalid protocol data");
+          }
+          this.#onClipboardChange.fire(message.content);
+          break;
+        case MessageId.UHidOutput:
+          if (!this.#ready) {
+            throw new Error("Invalid protocol data");
+          }
+          break;
+      }
+    };
+
+    // Read initial messages (Version, DisplayInfo) from stdout
     void this.#process.output
       .pipeThrough(new StructDeserializeStream(Messages))
-      .pipeTo(
-        new WritableStream({
-          write: ({ value: message }) => {
-            switch (message.type) {
-              case MessageId.Version:
-                if (this.#ready) {
-                  throw new Error("Invalid protocol data");
-                }
-
-                if (message.major > 1) {
-                  throw new Error("Incompatible version");
-                }
-
-                this.#ready = true;
-                break;
-              case MessageId.DisplayInfo:
-                if (!this.#ready) {
-                  throw new Error("Invalid protocol data");
-                }
-
-                this.#onDisplayChange.fire(message);
-                break;
-              case MessageId.ClipboardChange:
-                if (!this.#ready) {
-                  throw new Error("Invalid protocol data");
-                }
-
-                this.#onClipboardChange.fire(message.content);
-                break;
-              case MessageId.UHidOutput:
-                if (!this.#ready) {
-                  throw new Error("Invalid protocol data");
-                }
-
-                // TODO: handle UHID output if needed
-                break;
-            }
-          },
-        }),
-      )
+      .pipeTo(new WritableStream({ write: handleMessage }))
       .catch((err) => {
         console.error("[server] Output stream processing error:", err);
+      });
+
+    // Read continuous messages (Clipboard) from the control socket
+    void ReadableStream.from<Uint8Array>(controlSocket)
+      .pipeThrough(new StructDeserializeStream(Messages))
+      .pipeTo(new WritableStream({ write: handleMessage }))
+      .catch((err) => {
+        console.error("[server] Socket stream processing error:", err);
       });
   }
 

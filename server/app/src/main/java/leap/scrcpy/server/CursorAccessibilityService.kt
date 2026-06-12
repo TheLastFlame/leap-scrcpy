@@ -27,6 +27,17 @@ class CursorAccessibilityService : AccessibilityService() {
     private var serverWidth = 1
     private var serverHeight = 1
 
+    @Volatile private var pendingX = 0
+    @Volatile private var pendingY = 0
+    @Volatile private var isUpdatePending = false
+
+    private val updateRunnable = Runnable {
+        layoutParams.x = pendingX
+        layoutParams.y = pendingY
+        windowManager.updateViewLayout(cursorView, layoutParams)
+        isUpdatePending = false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
@@ -72,6 +83,7 @@ class CursorAccessibilityService : AccessibilityService() {
     }
 
     private fun handleClient(socket: Socket) {
+        socket.tcpNoDelay = true
         thread(start = true, name = "CursorClientThread") {
             try {
                 val dis = DataInputStream(socket.getInputStream())
@@ -112,10 +124,12 @@ class CursorAccessibilityService : AccessibilityService() {
                             val scaleX = deviceWidth.toFloat() / safeWidth
                             val scaleY = deviceHeight.toFloat() / safeHeight
 
-                            mainHandler.post {
-                                layoutParams.x = (x * scaleX).toInt()
-                                layoutParams.y = (y * scaleY).toInt()
-                                windowManager.updateViewLayout(cursorView, layoutParams)
+                            pendingX = (x * scaleX).toInt()
+                            pendingY = (y * scaleY).toInt()
+
+                            if (!isUpdatePending) {
+                                isUpdatePending = true
+                                mainHandler.post(updateRunnable)
                             }
                         }
                         3 -> { // Set Server Dimensions

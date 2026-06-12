@@ -27,6 +27,17 @@ class CursorService : Service() {
     private var serverSocket: ServerSocket? = null
     private var isRunning = false
 
+    @Volatile private var pendingX = 0
+    @Volatile private var pendingY = 0
+    @Volatile private var isUpdatePending = false
+
+    private val updateRunnable = Runnable {
+        layoutParams.x = pendingX
+        layoutParams.y = pendingY
+        windowManager.updateViewLayout(cursorView, layoutParams)
+        isUpdatePending = false
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -88,6 +99,7 @@ class CursorService : Service() {
     }
 
     private fun handleClient(socket: Socket) {
+        socket.tcpNoDelay = true
         thread(start = true, name = "CursorClientThread") {
             try {
                 val dis = DataInputStream(socket.getInputStream())
@@ -107,10 +119,13 @@ class CursorService : Service() {
                         2 -> { // Move
                             val x = dis.readInt()
                             val y = dis.readInt()
-                            mainHandler.post {
-                                layoutParams.x = x
-                                layoutParams.y = y
-                                windowManager.updateViewLayout(cursorView, layoutParams)
+
+                            pendingX = x
+                            pendingY = y
+
+                            if (!isUpdatePending) {
+                                isUpdatePending = true
+                                mainHandler.post(updateRunnable)
                             }
                         }
                     }

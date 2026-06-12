@@ -29,7 +29,8 @@ object Main {
         Reflect.onClass("android.hardware.display.DisplayManagerGlobal").call("getInstance")
     }
 
-
+    @Volatile
+    private var activeSocketOutputStream: DataOutputStream? = null
 
     private fun getDisplayInfo(): DisplayInfoMessage {
         val displayInfo = displayManagerGlobal.call("getDisplayInfo", 0)
@@ -42,6 +43,7 @@ object Main {
 
     @JvmStatic
     fun main(vararg args: String) {
+        Workarounds.apply()
         System.setErr(java.io.PrintStream(object : java.io.OutputStream() {
             private val buffer = StringBuilder()
             override fun write(b: Int) {
@@ -56,11 +58,11 @@ object Main {
 
         Looper.prepare()
 
-        val outputStream = DataOutputStream(System.out)
-        VersionMessage.serialize(outputStream)
+        val systemOutStream = DataOutputStream(System.out)
+        VersionMessage.serialize(systemOutStream)
 
         var lastDisplayInfo = getDisplayInfo()
-        lastDisplayInfo.serialize(outputStream)
+        lastDisplayInfo.serialize(systemOutStream)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val windowManagerBinder =
@@ -82,7 +84,8 @@ object Main {
 
                         val displayInfo = getDisplayInfo()
                         if (displayInfo != lastDisplayInfo) {
-                            displayInfo.serialize(outputStream)
+                            displayInfo.serialize(systemOutStream)
+                            systemOutStream.flush()
                             Log.e(
                                 "LeapScrcpy",
                                 "onDisplayConfigurationChanged ${displayInfo.width} ${displayInfo.height} ${displayInfo.rotation}"
@@ -123,7 +126,8 @@ object Main {
 
                     val displayInfo = getDisplayInfo()
                     if (displayInfo != lastDisplayInfo) {
-                        displayInfo.serialize(outputStream)
+                        displayInfo.serialize(systemOutStream)
+                        systemOutStream.flush()
                         lastDisplayInfo = displayInfo
                     }
                 }
@@ -142,7 +146,17 @@ object Main {
                     val text = clipData.getItemAt(0).text
                     if (text != null) {
                         Log.e("LeapScrcpy", "Clipboard content: $text")
-                        ClipboardMessage(text.toString()).serialize(outputStream)
+                        val out = activeSocketOutputStream
+                        if (out != null) {
+                            try {
+                                ClipboardMessage(text.toString()).serialize(out)
+                                out.flush()
+                            } catch (e: Exception) {
+                                Log.e("LeapScrcpy", "Failed to send clipboard content", e)
+                            }
+                        } else {
+                            Log.e("LeapScrcpy", "No active socket output stream to send clipboard")
+                        }
                     } else {
                         Log.e("LeapScrcpy", "Clipboard item text is null")
                     }
@@ -153,13 +167,20 @@ object Main {
         }
 
         try {
-            val inputStream = DataInputStream(System.`in`.buffered())
+            val serverSocket = java.net.ServerSocket(18402)
+            val socket = serverSocket.accept()
+            socket.tcpNoDelay = true
+
+            val inputStream = DataInputStream(socket.getInputStream())
+            val socketOutputStream = DataOutputStream(socket.getOutputStream())
+            activeSocketOutputStream = socketOutputStream
+
             while (true) {
                 val type = inputStream.readInt()
                 when (type) {
-                    0 -> ClipboardRequest.deserialize(inputStream).run(outputStream)
-                    1 -> UHidRequest.deserialize(inputStream).run(outputStream)
-                    2 -> InjectRequest.deserialize(inputStream).run(outputStream)
+                    0 -> ClipboardRequest.deserialize(inputStream).run(socketOutputStream)
+                    1 -> UHidRequest.deserialize(inputStream).run(socketOutputStream)
+                    2 -> InjectRequest.deserialize(inputStream).run(socketOutputStream)
                     else -> throw IndexOutOfBoundsException()
                 }
             }
@@ -167,6 +188,7 @@ object Main {
             Log.e("LeapScrcpyErr", "Fatal error in request loop: " + t.message, t)
             t.printStackTrace()
         } finally {
+            activeSocketOutputStream = null
         }
     }
 }
