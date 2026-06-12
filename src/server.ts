@@ -225,15 +225,9 @@ export class ServerClient {
           this.#onDisplayChange.fire(message);
           break;
         case MessageId.ClipboardChange:
-          if (!this.#ready) {
-            throw new Error("Invalid protocol data");
-          }
           this.#onClipboardChange.fire(message.content);
           break;
         case MessageId.UHidOutput:
-          if (!this.#ready) {
-            throw new Error("Invalid protocol data");
-          }
           break;
       }
     };

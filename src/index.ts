@@ -262,7 +262,7 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       currentButtonState,
       0,
       0
-    );
+    ).catch(e => console.error("[server] injectInput failed on enter", e));
   });
 
   client.onLeave(() => {
@@ -311,7 +311,7 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       currentButtonState,
       0,
       0
-    );
+    ).catch(e => console.error("[server] injectInput failed on mouse down", e));
   });
 
   client.onMouseUp((button) => {
@@ -325,7 +325,7 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       currentButtonState,
       0,
       0
-    );
+    ).catch(e => console.error("[server] injectInput failed on mouse up", e));
   });
 
   client.onMouseWheel(({ yDelta }) => {
@@ -338,12 +338,12 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       currentButtonState,
       vscroll,
       0
-    );
+    ).catch(e => console.error("[server] injectInput failed on mouse wheel", e));
   });
 
   client.onClipboard((content) => {
     console.log("[clipboard]", "Received from InputLeap client:", content);
-    server.setClipboard(content);
+    server.setClipboard(content).catch(e => console.error("[server] setClipboard failed", e));
   });
 
   const keyboard = new HidKeyboard();
