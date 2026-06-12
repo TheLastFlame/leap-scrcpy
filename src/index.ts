@@ -194,8 +194,8 @@ async function sendMouseMove() {
       const action = currentButtonState !== 0 ? 2 : 7; // ACTION_MOVE (2) or ACTION_HOVER_MOVE (7)
       await server.injectInput(
         action,
-        rotationMapper.x,
-        rotationMapper.y,
+        x,
+        y,
         currentButtonState,
         0,
         0
@@ -232,8 +232,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     rotationMapper.setLogicalPosition(x, y);
     server.injectInput(
       7, // ACTION_HOVER_MOVE
-      rotationMapper.x,
-      rotationMapper.y,
+      x,
+      y,
       currentButtonState,
       0,
       0
@@ -281,8 +281,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       0, // ACTION_DOWN
-      rotationMapper.x,
-      rotationMapper.y,
+      virtualX,
+      virtualY,
       currentButtonState,
       0,
       0
@@ -295,8 +295,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       1, // ACTION_UP
-      rotationMapper.x,
-      rotationMapper.y,
+      virtualX,
+      virtualY,
       currentButtonState,
       0,
       0
@@ -308,8 +308,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       8, // ACTION_SCROLL
-      rotationMapper.x,
-      rotationMapper.y,
+      virtualX,
+      virtualY,
       currentButtonState,
       vscroll,
       0
