@@ -5,8 +5,9 @@ import { fileURLToPath } from "node:url";
 import { InputLeapClient } from "./input-leap/client.js";
 import { Lazy } from "./lazy.js";
 import { RotationMapper } from "./rotation.js";
-import { ServerClient } from "./server.js";
+import { ServerClient, ServerUHidDevice } from "./server.js";
 import { loadMouseSettings, AccelerationFilter } from "./acceleration.js";
+import { HidKeyboard } from "./keyboard.js";
 import { execSync } from "node:child_process";
 import net from "node:net";
 import { createHash } from "node:crypto";
@@ -340,6 +341,30 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
 
   client.onClipboard((content) => {
     server.setClipboard(content);
+  });
+
+  const keyboard = new HidKeyboard();
+  const keyboardDevice = await server.createUHidDevice(
+    1, // SC_HID_ID_KEYBOARD
+    HidKeyboard.getDescriptor()
+  );
+
+  client.onKeyDown(({ id, mask, button }) => {
+    const scancode = HidKeyboard.windowsScanCodeToHid(button);
+    if (scancode) {
+      keyboard.setModifiers(mask);
+      keyboard.keyDown(scancode);
+      keyboardDevice.write(keyboard.report);
+    }
+  });
+
+  client.onKeyUp(({ id, mask, button }) => {
+    const scancode = HidKeyboard.windowsScanCodeToHid(button);
+    if (scancode) {
+      keyboard.setModifiers(mask);
+      keyboard.keyUp(scancode);
+      keyboardDevice.write(keyboard.report);
+    }
   });
 
   return client;

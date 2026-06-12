@@ -13,4 +13,7 @@ export const MessageType = {
   Leave: encodeUtf8("COUT"),
   Clipboard: encodeUtf8("DCLP"),
   MouseWheel: encodeUtf8("DMWM"),
+  KeyDown: encodeUtf8("DKDN"),
+  KeyUp: encodeUtf8("DKUP"),
+  KeyRepeat: encodeUtf8("DKRP"),
 } as const;

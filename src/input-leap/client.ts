@@ -80,6 +80,15 @@ const MessageMouseWheel = struct(
   { littleEndian: false },
 );
 
+const MessageKey = struct(
+  {
+    id: u16,
+    mask: u16,
+    button: u16,
+  },
+  { littleEndian: false },
+);
+
 async function readMessage(readable: BufferedReadableStream) {
   const buffer = await readable.readExactly(4);
   const length = getUint32BigEndian(buffer, 0);
@@ -228,6 +237,33 @@ export class InputLeapClient {
     return this.#onClipboard.event;
   }
 
+  #onKeyDown = new EventEmitter<{
+    id: number;
+    mask: number;
+    button: number;
+  }>();
+  get onKeyDown() {
+    return this.#onKeyDown.event;
+  }
+
+  #onKeyUp = new EventEmitter<{
+    id: number;
+    mask: number;
+    button: number;
+  }>();
+  get onKeyUp() {
+    return this.#onKeyUp.event;
+  }
+
+  #onKeyRepeat = new EventEmitter<{
+    id: number;
+    mask: number;
+    button: number;
+  }>();
+  get onKeyRepeat() {
+    return this.#onKeyRepeat.event;
+  }
+
   #lastClipboard = "";
 
   constructor(socket: TLSSocket, readable: BufferedReadableStream) {
@@ -289,6 +325,30 @@ export class InputLeapClient {
             xDelta: message.xDelta,
             yDelta: message.yDelta,
           });
+          continue;
+        }
+
+        if (startsWith(buffer, MessageType.KeyDown)) {
+          const message = MessageKey.deserialize(
+            bufferExactReadable(buffer, MessageType.KeyDown.length),
+          );
+          this.#onKeyDown.fire(message);
+          continue;
+        }
+
+        if (startsWith(buffer, MessageType.KeyUp)) {
+          const message = MessageKey.deserialize(
+            bufferExactReadable(buffer, MessageType.KeyUp.length),
+          );
+          this.#onKeyUp.fire(message);
+          continue;
+        }
+
+        if (startsWith(buffer, MessageType.KeyRepeat)) {
+          const message = MessageKey.deserialize(
+            bufferExactReadable(buffer, MessageType.KeyRepeat.length),
+          );
+          this.#onKeyRepeat.fire(message);
           continue;
         }
 
