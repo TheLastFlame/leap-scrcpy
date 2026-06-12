@@ -59,21 +59,28 @@ try {
   console.warn("[cursor-overlay] Warning: Failed to grant overlay permission via ADB:", e);
 }
 
-// 3. Double check if permission is granted, if not start MainActivity to prompt user
-let hasPermission = false;
+// 3. Check if Accessibility Service is enabled, if not start MainActivity to prompt user
+let isServiceEnabled = false;
 try {
-  const appopsStatus = execSync("adb shell appops get leap.scrcpy.server SYSTEM_ALERT_WINDOW").toString();
-  if (appopsStatus.includes("allow")) {
-    hasPermission = true;
+  const enabledServices = execSync("adb shell settings get secure enabled_accessibility_services").toString();
+  if (
+    enabledServices.includes("leap.scrcpy.server/.CursorAccessibilityService") ||
+    enabledServices.includes("leap.scrcpy.server/leap.scrcpy.server.CursorAccessibilityService")
+  ) {
+    isServiceEnabled = true;
   }
 } catch (e) {}
 
-console.log("[cursor-overlay] Launching helper application to start CursorService...");
-try {
-  execSync("adb shell am start -n leap.scrcpy.server/.MainActivity");
-  console.log("[cursor-overlay] MainActivity launched");
-} catch (e) {
-  console.error("[cursor-overlay] Failed to start MainActivity:", e);
+if (!isServiceEnabled) {
+  console.log("[cursor-overlay] Accessibility service is not enabled. Launching MainActivity...");
+  try {
+    execSync("adb shell am start -n leap.scrcpy.server/.MainActivity");
+    console.log("[cursor-overlay] MainActivity launched");
+  } catch (e) {
+    console.error("[cursor-overlay] Failed to start MainActivity:", e);
+  }
+} else {
+  console.log("[cursor-overlay] Accessibility service is already running. Skipping MainActivity.");
 }
 
 let cursorSocket: net.Socket | null = null;
