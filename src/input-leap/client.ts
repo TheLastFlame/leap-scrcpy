@@ -10,6 +10,7 @@ import {
 import {
   buffer,
   decodeUtf8,
+  s16,
   string,
   struct,
   u16,
@@ -67,6 +68,14 @@ const MessageEnter = struct(
     y: u16,
     sequenceNumber: u32,
     mask: u16,
+  },
+  { littleEndian: false },
+);
+
+const MessageMouseWheel = struct(
+  {
+    xDelta: s16,
+    yDelta: s16,
   },
   { littleEndian: false },
 );
@@ -209,6 +218,11 @@ export class InputLeapClient {
     return this.#onMouseUp.event;
   }
 
+  #onMouseWheel = new EventEmitter<{ xDelta: number; yDelta: number }>();
+  get onMouseWheel() {
+    return this.#onMouseWheel.event;
+  }
+
   #onClipboard = new EventEmitter<string>();
   get onClipboard() {
     return this.#onClipboard.event;
@@ -264,6 +278,17 @@ export class InputLeapClient {
         if (startsWith(buffer, MessageType.MouseUp)) {
           const button = buffer[MessageType.MouseUp.length + 1];
           this.#onMouseUp.fire(button);
+          continue;
+        }
+
+        if (startsWith(buffer, MessageType.MouseWheel)) {
+          const message = MessageMouseWheel.deserialize(
+            bufferExactReadable(buffer, MessageType.MouseWheel.length),
+          );
+          this.#onMouseWheel.fire({
+            xDelta: message.xDelta,
+            yDelta: message.yDelta,
+          });
           continue;
         }
 

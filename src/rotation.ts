@@ -46,10 +46,22 @@ export class RotationMapper {
     }
   }
 
-  setLogicalPosition(x: number, y: number) {
-    this.logicalX = x;
-    this.logicalY = y;
-    this.x = x;
-    this.y = y;
+  setLogicalPosition(lx: number, ly: number) {
+    this.logicalX = lx;
+    this.logicalY = ly;
+
+    if (this.rotation === 0) {
+      this.x = lx;
+      this.y = ly;
+    } else if (this.rotation === 1) { // 90 degrees clockwise
+      this.x = ly;
+      this.y = this.height - lx;
+    } else if (this.rotation === 2) { // 180 degrees
+      this.x = this.width - lx;
+      this.y = this.height - ly;
+    } else if (this.rotation === 3) { // 270 degrees clockwise
+      this.x = this.width - ly;
+      this.y = lx;
+    }
   }
 }

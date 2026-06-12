@@ -12,4 +12,5 @@ export const MessageType = {
   Enter: encodeUtf8("CINN"),
   Leave: encodeUtf8("COUT"),
   Clipboard: encodeUtf8("DCLP"),
+  MouseWheel: encodeUtf8("DMWM"),
 } as const;

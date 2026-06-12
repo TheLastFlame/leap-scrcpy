@@ -56,6 +56,18 @@ export const ClipboardRequest = struct(
   { littleEndian: false },
 );
 
+export const InjectRequest = struct(
+  {
+    action: s32,
+    x: s32,
+    y: s32,
+    buttonState: s32,
+    vscroll: s32,
+    hscroll: s32,
+  },
+  { littleEndian: false },
+);
+
 export const UHidRequestOperation = {
   Create: 0,
   Write: 1,
@@ -72,6 +84,7 @@ export const UHidRequest = struct(
 export const RequestId = {
   SetClipboard: 0,
   UHidRequest: 1,
+  InjectRequest: 2,
 } as const;
 
 export const Requests = struct(
@@ -81,6 +94,7 @@ export const Requests = struct(
       {
         [RequestId.SetClipboard]: ClipboardRequest,
         [RequestId.UHidRequest]: UHidRequest,
+        [RequestId.InjectRequest]: InjectRequest,
       },
     ),
   },
@@ -177,7 +191,10 @@ export class ServerClient {
             }
           },
         }),
-      );
+      )
+      .catch((err) => {
+        console.error("[server] Output stream processing error:", err);
+      });
   }
 
   #write(request: StructInit<typeof Requests>["value"]) {
@@ -188,6 +205,25 @@ export class ServerClient {
 
   setClipboard(content: string) {
     return this.#write({ type: 0, content });
+  }
+
+  injectInput(
+    action: number,
+    x: number,
+    y: number,
+    buttonState: number,
+    vscroll: number,
+    hscroll: number,
+  ) {
+    return this.#write({
+      type: RequestId.InjectRequest,
+      action,
+      x,
+      y,
+      buttonState,
+      vscroll,
+      hscroll,
+    });
   }
 
   async createUHidDevice(id: number, descriptor: Uint8Array) {

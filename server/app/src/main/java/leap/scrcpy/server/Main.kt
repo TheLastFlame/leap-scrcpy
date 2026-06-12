@@ -18,6 +18,7 @@ import leap.scrcpy.server.messages.DisplayInfoMessage
 import leap.scrcpy.server.messages.VersionMessage
 import leap.scrcpy.server.request.ClipboardRequest
 import leap.scrcpy.server.request.UHidRequest
+import leap.scrcpy.server.request.InjectRequest
 import org.joor.Reflect
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -28,7 +29,7 @@ object Main {
         Reflect.onClass("android.hardware.display.DisplayManagerGlobal").call("getInstance")
     }
 
-    private var resetShowTouches = false
+
 
     private fun getDisplayInfo(): DisplayInfoMessage {
         val displayInfo = displayManagerGlobal.call("getDisplayInfo", 0)
@@ -41,6 +42,18 @@ object Main {
 
     @JvmStatic
     fun main(vararg args: String) {
+        System.setErr(java.io.PrintStream(object : java.io.OutputStream() {
+            private val buffer = StringBuilder()
+            override fun write(b: Int) {
+                if (b == '\n'.code) {
+                    Log.e("LeapScrcpyErr", buffer.toString())
+                    buffer.setLength(0)
+                } else {
+                    buffer.append(b.toChar())
+                }
+            }
+        }, true))
+
         Looper.prepare()
 
         val outputStream = DataOutputStream(System.out)
@@ -124,10 +137,6 @@ object Main {
             ClipboardMessage(content).serialize(outputStream)
         }
 
-        resetShowTouches =
-            Settings.System.getInt(FakeContext.contentResolver, "show_touches", 0) != 0
-        Settings.System.putInt(FakeContext.contentResolver, "show_touches", 1)
-
         try {
             val inputStream = DataInputStream(System.`in`.buffered())
             while (true) {
@@ -135,13 +144,14 @@ object Main {
                 when (type) {
                     0 -> ClipboardRequest.deserialize(inputStream).run(outputStream)
                     1 -> UHidRequest.deserialize(inputStream).run(outputStream)
+                    2 -> InjectRequest.deserialize(inputStream).run(outputStream)
                     else -> throw IndexOutOfBoundsException()
                 }
             }
+        } catch (t: Throwable) {
+            Log.e("LeapScrcpyErr", "Fatal error in request loop: " + t.message, t)
+            t.printStackTrace()
         } finally {
-            if (resetShowTouches) {
-                Settings.System.putInt(FakeContext.contentResolver, "show_touches", 0)
-            }
         }
     }
 }

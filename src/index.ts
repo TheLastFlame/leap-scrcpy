@@ -6,8 +6,9 @@ import { InputLeapClient } from "./input-leap/client.js";
 import { Lazy } from "./lazy.js";
 import { RotationMapper } from "./rotation.js";
 import { ServerClient } from "./server.js";
-import { HidStylus } from "./stylus.js";
 import { loadMouseSettings, AccelerationFilter } from "./acceleration.js";
+import { execSync } from "node:child_process";
+import net from "node:net";
 
 const address = process.argv[2] ?? "localhost:24800";
 const name = process.argv[3] ?? "Android";
@@ -33,14 +34,131 @@ console.log("using device", adb.serial);
 
 export const LocalRoot = resolve(fileURLToPath(import.meta.url), "../..");
 
+try {
+  execSync("adb forward tcp:18400 tcp:18400");
+  console.log("[cursor-overlay] Set up ADB port forwarding for cursor service");
+} catch (e) {
+  console.error("[cursor-overlay] Failed to set up ADB port forwarding:", e);
+}
+
+const apkPath = resolve(LocalRoot, "server/app/build/outputs/apk/debug/app-debug.apk");
+
+console.log("[cursor-overlay] Installing helper app to device...");
+try {
+  execSync(`adb install -r -d "${apkPath}"`);
+  console.log("[cursor-overlay] Helper app installed successfully");
+} catch (e) {
+  console.error("[cursor-overlay] Failed to install helper app:", e);
+}
+
+// 2. Grant overlay permission via appops
+try {
+  execSync("adb shell appops set leap.scrcpy.server SYSTEM_ALERT_WINDOW allow");
+  console.log("[cursor-overlay] Granted overlay permission via ADB");
+} catch (e) {
+  console.warn("[cursor-overlay] Warning: Failed to grant overlay permission via ADB:", e);
+}
+
+// 3. Double check if permission is granted, if not start MainActivity to prompt user
+let hasPermission = false;
+try {
+  const appopsStatus = execSync("adb shell appops get leap.scrcpy.server SYSTEM_ALERT_WINDOW").toString();
+  if (appopsStatus.includes("allow")) {
+    hasPermission = true;
+  }
+} catch (e) {}
+
+console.log("[cursor-overlay] Launching helper application to start CursorService...");
+try {
+  execSync("adb shell am start -n leap.scrcpy.server/.MainActivity");
+  console.log("[cursor-overlay] MainActivity launched");
+} catch (e) {
+  console.error("[cursor-overlay] Failed to start MainActivity:", e);
+}
+
+let cursorSocket: net.Socket | null = null;
+let isCursorConnected = false;
+
+function connectCursor() {
+  if (isCursorConnected || cursorSocket) return;
+
+  const socket = new net.Socket();
+  cursorSocket = socket;
+
+  socket.connect(18400, "127.0.0.1", () => {
+    isCursorConnected = true;
+    console.log("[cursor-overlay] Connected to Android cursor overlay");
+    if (typeof rotationMapper !== "undefined" && rotationMapper) {
+      sendCursorSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
+    }
+  });
+
+  socket.on("error", () => {
+    isCursorConnected = false;
+    cursorSocket = null;
+  });
+
+  socket.on("close", () => {
+    isCursorConnected = false;
+    cursorSocket = null;
+    // Retry connection after 3 seconds
+    setTimeout(connectCursor, 3000);
+  });
+}
+
+function sendCursorShow() {
+  if (!isCursorConnected || !cursorSocket) return;
+  const buf = Buffer.alloc(1);
+  buf.writeUInt8(1, 0); // 1 = Show
+  cursorSocket.write(buf);
+}
+
+function sendCursorHide() {
+  if (!isCursorConnected || !cursorSocket) return;
+  const buf = Buffer.alloc(1);
+  buf.writeUInt8(0, 0); // 0 = Hide
+  cursorSocket.write(buf);
+}
+
+function sendCursorMove(x: number, y: number) {
+  if (!isCursorConnected || !cursorSocket) return;
+  const buf = Buffer.alloc(9);
+  buf.writeUInt8(2, 0); // 2 = Move
+  buf.writeInt32BE(Math.round(x), 1);
+  buf.writeInt32BE(Math.round(y), 5);
+  cursorSocket.write(buf);
+}
+
+function sendCursorSize(width: number, height: number) {
+  if (!isCursorConnected || !cursorSocket) return;
+  const buf = Buffer.alloc(9);
+  buf.writeUInt8(3, 0); // 3 = Set Size
+  buf.writeInt32BE(Math.round(width), 1);
+  buf.writeInt32BE(Math.round(height), 5);
+  cursorSocket.write(buf);
+}
+
+const rotationMapper = new RotationMapper();
+
+let currentButtonState = 0;
+
+function mapButton(button: number): number {
+  if (button === 1) return 1; // Left -> Primary (1)
+  if (button === 2) return 4; // Middle -> Tertiary (4)
+  if (button === 3) return 2; // Right -> Secondary (2)
+  if (button === 4) return 8; // Back -> Back (8)
+  if (button === 5) return 16; // Forward -> Forward (16)
+  return 0;
+}
+
+connectCursor();
+
+
 const server = await ServerClient.start(
   adb,
   resolve(LocalRoot, "server/app/build/outputs/apk/debug/app-debug.apk"),
 );
 
-const rotationMapper = new RotationMapper();
-const stylus = new HidStylus();
-const uHidStylus = await server.createUHidDevice(0, HidStylus.Descriptor);
 
 const mouseSettings = await loadMouseSettings();
 const accelFilter = new AccelerationFilter(mouseSettings);
@@ -51,9 +169,7 @@ let virtualX = 0;
 let virtualY = 0;
 let isInitialized = false;
 
-function safeWrite(report: Uint8Array): Promise<void> {
-  return uHidStylus.write(report).catch(() => {});
-}
+
 
 
 let isWritingMove = false;
@@ -72,9 +188,17 @@ async function sendMouseMove() {
       const y = pendingY;
       hasPendingMove = false;
 
-      rotationMapper.setLogicalPosition(x, y);
-      stylus!.move(rotationMapper.x, rotationMapper.y);
-      await safeWrite(stylus!.report.slice());
+      sendCursorMove(x, y);
+      
+      const action = currentButtonState !== 0 ? 2 : 7; // ACTION_MOVE (2) or ACTION_HOVER_MOVE (7)
+      await server.injectInput(
+        action,
+        x,
+        y,
+        currentButtonState,
+        0,
+        0
+      );
     }
   } finally {
     isWritingMove = false;
@@ -101,18 +225,23 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     virtualY = y;
     isInitialized = true;
 
-    rotationMapper.setLogicalPosition(x, y);
+    sendCursorShow();
+    sendCursorMove(x, y);
 
-    stylus!.enter();
-    stylus!.move(rotationMapper.x, rotationMapper.y);
-
-    safeWrite(stylus!.report.slice());
+    server.injectInput(
+      7, // ACTION_HOVER_MOVE
+      x,
+      y,
+      currentButtonState,
+      0,
+      0
+    );
   });
 
   client.onLeave(() => {
     isInitialized = false;
-    stylus!.leave();
-    safeWrite(stylus!.report.slice());
+    sendCursorHide();
+    currentButtonState = 0;
   });
 
   client.onMouseMove(({ x, y }) => {
@@ -145,13 +274,41 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   });
 
   client.onMouseDown((button) => {
-    stylus!.buttonDown(button);
-    safeWrite(stylus!.report.slice());
+    const mask = mapButton(button);
+    currentButtonState |= mask;
+    server.injectInput(
+      0, // ACTION_DOWN
+      virtualX,
+      virtualY,
+      currentButtonState,
+      0,
+      0
+    );
   });
 
   client.onMouseUp((button) => {
-    stylus!.buttonUp(button);
-    safeWrite(stylus!.report.slice());
+    const mask = mapButton(button);
+    currentButtonState &= ~mask;
+    server.injectInput(
+      1, // ACTION_UP
+      virtualX,
+      virtualY,
+      currentButtonState,
+      0,
+      0
+    );
+  });
+
+  client.onMouseWheel(({ yDelta }) => {
+    const vscroll = Math.sign(yDelta);
+    server.injectInput(
+      8, // ACTION_SCROLL
+      virtualX,
+      virtualY,
+      currentButtonState,
+      vscroll,
+      0
+    );
   });
 
   client.onClipboard((content) => {
@@ -180,12 +337,10 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
     );
   }
 
-  stylus.setSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
-  virtualX = rotationMapper.x;
-  virtualY = rotationMapper.y;
-  stylus.move(rotationMapper.x, rotationMapper.y);
+  virtualX = Math.max(0, Math.min(rotationMapper.logicalWidth, virtualX));
+  virtualY = Math.max(0, Math.min(rotationMapper.logicalHeight, virtualY));
 
-  await safeWrite(stylus.report.slice());
+  sendCursorSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
 });
 
 server.onClipboardChange(async (content) => {
