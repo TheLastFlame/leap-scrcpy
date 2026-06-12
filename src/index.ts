@@ -9,6 +9,8 @@ import { ServerClient } from "./server.js";
 import { loadMouseSettings, AccelerationFilter } from "./acceleration.js";
 import { execSync } from "node:child_process";
 import net from "node:net";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const address = process.argv[2] ?? "localhost:24800";
 const name = process.argv[3] ?? "Android";
@@ -43,12 +45,25 @@ try {
 
 const apkPath = resolve(LocalRoot, "server/app/build/outputs/apk/debug/app-debug.apk");
 
-console.log("[cursor-overlay] Installing helper app to device...");
+// Only install APK if it has changed (compare local hash vs stored hash on device)
+const localApkHash = createHash("md5").update(readFileSync(apkPath)).digest("hex");
+const remoteHashPath = "/data/local/tmp/leap-scrcpy-apk.md5";
+let remoteHash = "";
 try {
-  execSync(`adb install -r -d "${apkPath}"`);
-  console.log("[cursor-overlay] Helper app installed successfully");
-} catch (e) {
-  console.error("[cursor-overlay] Failed to install helper app:", e);
+  remoteHash = execSync(`adb shell cat "${remoteHashPath}" 2>/dev/null`).toString().trim();
+} catch (e) {}
+
+if (localApkHash !== remoteHash) {
+  console.log("[cursor-overlay] APK changed, installing...");
+  try {
+    execSync(`adb install -r -d "${apkPath}"`);
+    execSync(`adb shell "echo ${localApkHash} > ${remoteHashPath}"`);
+    console.log("[cursor-overlay] Helper app installed successfully");
+  } catch (e) {
+    console.error("[cursor-overlay] Failed to install helper app:", e);
+  }
+} else {
+  console.log("[cursor-overlay] APK is up to date, skipping install.");
 }
 
 // 2. Grant overlay permission via appops
