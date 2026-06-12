@@ -108,13 +108,19 @@ export class InputLeapClient {
     width: number,
     height: number,
   ) {
+    console.log(`[deskflow] Attempting to connect to ${server.host}:${server.port}...`);
     const socket = connect(server.port, server.host, {
       rejectUnauthorized: false,
       key: server.key,
       cert: server.cert,
     });
     socket.setNoDelay(true);
+    socket.on('error', (err) => {
+      console.error('[deskflow] Socket error:', err.message);
+    });
+    console.log(`[deskflow] Waiting for secureConnect...`);
     await once(socket, "secureConnect");
+    console.log(`[deskflow] secureConnect established`);
 
     const serverCertificate = socket.getPeerCertificate();
     console.log("Server SHA256 Fingerprint:", serverCertificate.fingerprint256);

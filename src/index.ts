@@ -38,7 +38,8 @@ export const LocalRoot = resolve(fileURLToPath(import.meta.url), "../..");
 
 try {
   execSync("adb forward tcp:18400 tcp:18400");
-  console.log("[cursor-overlay] Set up ADB port forwarding for cursor service");
+  execSync("adb forward tcp:18402 tcp:18402");
+  console.log("[cursor-overlay] Set up ADB port forwarding for cursor service and control socket");
 } catch (e) {
   console.error("[cursor-overlay] Failed to set up ADB port forwarding:", e);
 }
@@ -56,7 +57,7 @@ try {
 if (localApkHash !== remoteHash) {
   console.log("[cursor-overlay] APK changed, installing...");
   try {
-    execSync(`adb install -r -d "${apkPath}"`);
+    execSync(`adb install -r -t -d "${apkPath}"`);
     execSync(`adb shell "echo ${localApkHash} > ${remoteHashPath}"`);
     console.log("[cursor-overlay] Helper app installed successfully");
   } catch (e) {
@@ -108,6 +109,7 @@ function connectCursor() {
   cursorSocket = socket;
 
   socket.connect(18400, "127.0.0.1", () => {
+    socket.setNoDelay(true);
     isCursorConnected = true;
     console.log("[cursor-overlay] Connected to Android cursor overlay");
     if (typeof rotationMapper !== "undefined" && rotationMapper) {
@@ -214,14 +216,14 @@ async function sendMouseMove() {
       
       rotationMapper.setLogicalPosition(x, y);
       const action = currentButtonState !== 0 ? 2 : 7; // ACTION_MOVE (2) or ACTION_HOVER_MOVE (7)
-      await server.injectInput(
+      server.injectInput(
         action,
         x,
         y,
         currentButtonState,
         0,
         0
-      );
+      ).catch(e => console.error("[server] injectInput failed", e));
     }
   } finally {
     isWritingMove = false;
@@ -345,7 +347,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   return client;
 });
 
-server.onDisplayChange(async ({ width, height, rotation }) => {
+async function handleDisplayChange(width: number, height: number, rotation: number) {
+  console.log(`[server] Handling display config: ${width}x${height} (rotation: ${rotation})`);
   rotationMapper.setSize(width, height);
   rotationMapper.setRotation(rotation);
 
@@ -368,7 +371,15 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
   virtualY = Math.max(0, Math.min(rotationMapper.logicalHeight, virtualY));
 
   sendCursorSize(rotationMapper.logicalWidth, rotationMapper.logicalHeight);
+}
+
+server.onDisplayChange(async ({ width, height, rotation }) => {
+  await handleDisplayChange(width, height, rotation);
 });
+
+if (server.displayInfo) {
+  await handleDisplayChange(server.displayInfo.width, server.displayInfo.height, server.displayInfo.rotation);
+}
 
 server.onClipboardChange(async (content) => {
   const inputLeapClient = await inputLeapLazy.get();

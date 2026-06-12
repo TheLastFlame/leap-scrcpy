@@ -42,6 +42,7 @@ object Main {
 
     @JvmStatic
     fun main(vararg args: String) {
+        Workarounds.apply()
         System.setErr(java.io.PrintStream(object : java.io.OutputStream() {
             private val buffer = StringBuilder()
             override fun write(b: Int) {
@@ -56,11 +57,11 @@ object Main {
 
         Looper.prepare()
 
-        val outputStream = DataOutputStream(System.out)
-        VersionMessage.serialize(outputStream)
+        val systemOutStream = DataOutputStream(System.out)
+        VersionMessage.serialize(systemOutStream)
 
         var lastDisplayInfo = getDisplayInfo()
-        lastDisplayInfo.serialize(outputStream)
+        lastDisplayInfo.serialize(systemOutStream)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val windowManagerBinder =
@@ -82,7 +83,8 @@ object Main {
 
                         val displayInfo = getDisplayInfo()
                         if (displayInfo != lastDisplayInfo) {
-                            displayInfo.serialize(outputStream)
+                            displayInfo.serialize(systemOutStream)
+                            systemOutStream.flush()
                             Log.e(
                                 "LeapScrcpy",
                                 "onDisplayConfigurationChanged ${displayInfo.width} ${displayInfo.height} ${displayInfo.rotation}"
@@ -123,7 +125,8 @@ object Main {
 
                     val displayInfo = getDisplayInfo()
                     if (displayInfo != lastDisplayInfo) {
-                        displayInfo.serialize(outputStream)
+                        displayInfo.serialize(systemOutStream)
+                        systemOutStream.flush()
                         lastDisplayInfo = displayInfo
                     }
                 }
@@ -131,20 +134,29 @@ object Main {
             }, handler)
         }
 
-        ClipboardRequest.clipboardManager.addPrimaryClipChangedListener {
-            val content =
-                ClipboardRequest.clipboardManager.primaryClip?.getItemAt(0)?.text.toString()
-            ClipboardMessage(content).serialize(outputStream)
-        }
-
         try {
-            val inputStream = DataInputStream(System.`in`.buffered())
+            val serverSocket = java.net.ServerSocket(18402)
+            val socket = serverSocket.accept()
+            socket.tcpNoDelay = true
+
+            val inputStream = DataInputStream(socket.getInputStream())
+            val socketOutputStream = DataOutputStream(socket.getOutputStream())
+
+            // Update clipboard listener to use the new outputStream
+            ClipboardRequest.clipboardManager.addPrimaryClipChangedListener {
+                val content =
+                    ClipboardRequest.clipboardManager.primaryClip?.getItemAt(0)?.text.toString()
+                try {
+                    ClipboardMessage(content).serialize(socketOutputStream)
+                } catch (e: Exception) {}
+            }
+
             while (true) {
                 val type = inputStream.readInt()
                 when (type) {
-                    0 -> ClipboardRequest.deserialize(inputStream).run(outputStream)
-                    1 -> UHidRequest.deserialize(inputStream).run(outputStream)
-                    2 -> InjectRequest.deserialize(inputStream).run(outputStream)
+                    0 -> ClipboardRequest.deserialize(inputStream).run(socketOutputStream)
+                    1 -> UHidRequest.deserialize(inputStream).run(socketOutputStream)
+                    2 -> InjectRequest.deserialize(inputStream).run(socketOutputStream)
                     else -> throw IndexOutOfBoundsException()
                 }
             }
