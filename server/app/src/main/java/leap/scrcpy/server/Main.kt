@@ -171,7 +171,7 @@ object Main {
             val socket = serverSocket.accept()
             socket.tcpNoDelay = true
 
-            val inputStream = DataInputStream(socket.getInputStream())
+            val inputStream = DataInputStream(socket.getInputStream().buffered())
             val socketOutputStream = DataOutputStream(socket.getOutputStream())
             activeSocketOutputStream = socketOutputStream
 
