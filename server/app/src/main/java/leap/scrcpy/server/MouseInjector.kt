@@ -51,12 +51,20 @@ object MouseInjector {
     private var activeTool = MotionEvent.TOOL_TYPE_MOUSE
 
     fun inject(action: Int, x: Float, y: Float, buttonState: Int, vscroll: Float, hscroll: Float) {
-        android.util.Log.i("MouseInjector", "inject: action=$action, x=$x, y=$y, buttonState=$buttonState, vscroll=$vscroll, hscroll=$hscroll")
         val eventTime = SystemClock.uptimeMillis()
         if (action == MotionEvent.ACTION_DOWN) {
             downTime = eventTime
+        } else if (downTime == 0L) {
+            downTime = eventTime
+        }
 
-            val activeSecondaryButtons = (buttonState and 1.inv()) != 0
+        val activeSecondaryButtons = (buttonState and 1.inv()) != 0
+        val source: Int
+        val tool: Int
+        val finalButtonState: Int
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            downTime = eventTime
             if (activeSecondaryButtons) {
                 activeSource = InputDevice.SOURCE_MOUSE
                 activeTool = MotionEvent.TOOL_TYPE_MOUSE
@@ -67,10 +75,6 @@ object MouseInjector {
         } else if (downTime == 0L) {
             downTime = eventTime
         }
-
-        val source: Int
-        val tool: Int
-        val finalButtonState: Int
 
         if (action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_SCROLL) {
             tool = MotionEvent.TOOL_TYPE_MOUSE

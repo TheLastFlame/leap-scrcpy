@@ -190,11 +190,12 @@ async function sendMouseMove() {
 
       sendCursorMove(x, y);
       
+      rotationMapper.setLogicalPosition(x, y);
       const action = currentButtonState !== 0 ? 2 : 7; // ACTION_MOVE (2) or ACTION_HOVER_MOVE (7)
       await server.injectInput(
         action,
-        x,
-        y,
+        rotationMapper.x,
+        rotationMapper.y,
         currentButtonState,
         0,
         0
@@ -228,10 +229,11 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
     sendCursorShow();
     sendCursorMove(x, y);
 
+    rotationMapper.setLogicalPosition(x, y);
     server.injectInput(
       7, // ACTION_HOVER_MOVE
-      x,
-      y,
+      rotationMapper.x,
+      rotationMapper.y,
       currentButtonState,
       0,
       0
@@ -262,8 +264,10 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       return;
     }
 
-    virtualX = x;
-    virtualY = y;
+    const { dx, dy } = accelFilter.apply(rawDx, rawDy);
+
+    virtualX = Math.max(0, Math.min(rotationMapper.logicalWidth, virtualX + dx));
+    virtualY = Math.max(0, Math.min(rotationMapper.logicalHeight, virtualY + dy));
 
     pendingX = virtualX;
     pendingY = virtualY;
@@ -274,10 +278,11 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   client.onMouseDown((button) => {
     const mask = mapButton(button);
     currentButtonState |= mask;
+    rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       0, // ACTION_DOWN
-      virtualX,
-      virtualY,
+      rotationMapper.x,
+      rotationMapper.y,
       currentButtonState,
       0,
       0
@@ -287,10 +292,11 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   client.onMouseUp((button) => {
     const mask = mapButton(button);
     currentButtonState &= ~mask;
+    rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       1, // ACTION_UP
-      virtualX,
-      virtualY,
+      rotationMapper.x,
+      rotationMapper.y,
       currentButtonState,
       0,
       0
@@ -299,10 +305,11 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
 
   client.onMouseWheel(({ yDelta }) => {
     const vscroll = Math.sign(yDelta);
+    rotationMapper.setLogicalPosition(virtualX, virtualY);
     server.injectInput(
       8, // ACTION_SCROLL
-      virtualX,
-      virtualY,
+      rotationMapper.x,
+      rotationMapper.y,
       currentButtonState,
       vscroll,
       0
