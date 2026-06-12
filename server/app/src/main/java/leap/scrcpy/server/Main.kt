@@ -131,10 +131,25 @@ object Main {
             }, handler)
         }
 
-        ClipboardRequest.clipboardManager.addPrimaryClipChangedListener {
-            val content =
-                ClipboardRequest.clipboardManager.primaryClip?.getItemAt(0)?.text.toString()
-            ClipboardMessage(content).serialize(outputStream)
+        val clipboardThread = HandlerThread("ClipboardListener").apply { start() }
+        val clipboardHandler = Handler(clipboardThread.looper)
+        clipboardHandler.post {
+            Log.e("LeapScrcpy", "Registering clipboard listener")
+            ClipboardRequest.clipboardManager.addPrimaryClipChangedListener {
+                Log.e("LeapScrcpy", "Primary clip changed")
+                val clipData = ClipboardRequest.clipboardManager.primaryClip
+                if (clipData != null && clipData.itemCount > 0) {
+                    val text = clipData.getItemAt(0).text
+                    if (text != null) {
+                        Log.e("LeapScrcpy", "Clipboard content: $text")
+                        ClipboardMessage(text.toString()).serialize(outputStream)
+                    } else {
+                        Log.e("LeapScrcpy", "Clipboard item text is null")
+                    }
+                } else {
+                    Log.e("LeapScrcpy", "ClipData is null or empty")
+                }
+            }
         }
 
         try {

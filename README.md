@@ -10,9 +10,9 @@ It's still in early development stage:
 
 - [x] Mouse movement
 - [x] Mouse click
-- [ ] Mouse scroll wheel
+- [x] Mouse scroll wheel
 - [x] Two-way clipboard sync
-- [ ] Keyboard
+- [x] Keyboard
 - [ ] File Drag and Drop
 
 ## Prerequisites

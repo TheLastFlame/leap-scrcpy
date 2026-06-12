@@ -340,6 +340,7 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
   });
 
   client.onClipboard((content) => {
+    console.log("[clipboard]", "Received from InputLeap client:", content);
     server.setClipboard(content);
   });
 
@@ -396,6 +397,7 @@ server.onDisplayChange(async ({ width, height, rotation }) => {
 });
 
 server.onClipboardChange(async (content) => {
+  console.log("[clipboard]", "Received from Android server:", content);
   const inputLeapClient = await inputLeapLazy.get();
   inputLeapClient.setClipboard(content);
 });

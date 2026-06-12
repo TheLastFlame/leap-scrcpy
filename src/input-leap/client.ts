@@ -395,10 +395,6 @@ export class InputLeapClient {
   }
 
   setClipboard(data: string) {
-    if (!this.#lastSequenceNumber) {
-      return;
-    }
-
     if (data === this.#lastClipboard) {
       return;
     }
