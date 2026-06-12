@@ -262,10 +262,8 @@ const inputLeapLazy = new Lazy(async (width: number, height: number) => {
       return;
     }
 
-    const { dx, dy } = accelFilter.apply(rawDx, rawDy);
-
-    virtualX = Math.max(0, Math.min(rotationMapper.logicalWidth, virtualX + dx));
-    virtualY = Math.max(0, Math.min(rotationMapper.logicalHeight, virtualY + dy));
+    virtualX = x;
+    virtualY = y;
 
     pendingX = virtualX;
     pendingY = virtualY;
