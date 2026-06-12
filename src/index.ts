@@ -130,7 +130,7 @@ function sendCursorMove(x: number, y: number) {
 }
 
 function sendCursorSize(width: number, height: number) {
-  if (!isCursorConnected || !cursorSocket) return;
+  if (!isCursorConnected || !cursorSocket || width <= 0 || height <= 0) return;
   const buf = Buffer.alloc(9);
   buf.writeUInt8(3, 0); // 3 = Set Size
   buf.writeInt32BE(Math.round(width), 1);

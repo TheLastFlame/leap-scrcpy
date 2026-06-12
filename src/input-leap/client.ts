@@ -270,13 +270,13 @@ export class InputLeapClient {
         }
 
         if (startsWith(buffer, MessageType.MouseDown)) {
-          const button = buffer[MessageType.MouseDown.length + 1];
+          const button = buffer[MessageType.MouseDown.length];
           this.#onMouseDown.fire(button);
           continue;
         }
 
         if (startsWith(buffer, MessageType.MouseUp)) {
-          const button = buffer[MessageType.MouseUp.length + 1];
+          const button = buffer[MessageType.MouseUp.length];
           this.#onMouseUp.fire(button);
           continue;
         }

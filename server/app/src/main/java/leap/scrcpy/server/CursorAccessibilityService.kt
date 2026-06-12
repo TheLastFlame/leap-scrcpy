@@ -107,8 +107,10 @@ class CursorAccessibilityService : AccessibilityService() {
                                 deviceHeight = realMetrics.heightPixels
                             }
 
-                            val scaleX = deviceWidth.toFloat() / serverWidth
-                            val scaleY = deviceHeight.toFloat() / serverHeight
+                            val safeWidth = if (serverWidth > 0) serverWidth else 1
+                            val safeHeight = if (serverHeight > 0) serverHeight else 1
+                            val scaleX = deviceWidth.toFloat() / safeWidth
+                            val scaleY = deviceHeight.toFloat() / safeHeight
 
                             mainHandler.post {
                                 layoutParams.x = (x * scaleX).toInt()
