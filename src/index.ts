@@ -217,7 +217,7 @@ async function sendMouseMove() {
       
       rotationMapper.setLogicalPosition(x, y);
       const action = currentButtonState !== 0 ? 2 : 7; // ACTION_MOVE (2) or ACTION_HOVER_MOVE (7)
-      server.injectInput(
+      await server.injectInput(
         action,
         x,
         y,
